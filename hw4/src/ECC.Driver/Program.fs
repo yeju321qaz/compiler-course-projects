@@ -1,0 +1,83 @@
+(*
+  ECC - Ewha C-- Compiler
+
+  Copyright (c) SWEETS Lab. @ Ewha Womans University, since 2026
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of
+  this software and associated documentation files (the "Software"), to deal in
+  the Software without restriction, including without limitation the rights to
+  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+  of the Software, and to permit persons to whom the Software is furnished to do
+  so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+*)
+
+module ECC.Driver.Launcher
+
+open ECC
+open ECC.Core
+open ECC.IR
+open ECC.Driver
+
+let printLexingResult result =
+    match result with
+    | Ok tokens ->
+        printfn "Lexing successful. Tokens will be printed below, one per line."
+        printfn "========"
+        tokens |> List.iter (fun token -> printfn "%s" <| token.ToString ())
+    | Error (line, col) ->
+        printfn "Lexing failed at line %d, column %d." line col
+
+let printParsingResult result =
+    match result with
+    | Ok ast ->
+        printfn "Parsing successful. The AST will be printed below."
+        printfn "========"
+        printfn "%s" (FrontEnd.ASTPrinter.prettyPrint ast)
+    | Error (line, col) ->
+        printfn "Parsing failed at line %d, column %d." line col
+
+let printSemanticAnalysisResult result =
+    match result with
+    | Ok _ ->
+        printfn "Semantic analysis successful. No errors found."
+    | Error (line, col) ->
+        printfn "Semantic analysis failed at line %d, column %d." line col
+
+let printFrontEndResult result =
+    match result with
+    | Ok eir ->
+        printfn "IR translation successful. The EIR will be printed below."
+        printfn "========"
+        EIRPrinter.prettyPrint eir |> printfn "%s"
+    | Error (line, col) ->
+        printfn "Front-end processing failed at line %d, column %d." line col
+
+let run mode inputPath =
+    match mode with
+    | RunLexing -> FrontEnd.EntryPoints.lexFile inputPath |> printLexingResult
+    | RunParsing -> FrontEnd.EntryPoints.parseFile inputPath |> printParsingResult
+    | RunSemanticAnalysis -> FrontEnd.EntryPoints.analyzeSemanticsFile inputPath |> printSemanticAnalysisResult
+    | RunFrontEnd -> FrontEnd.EntryPoints.runFile inputPath |> printFrontEndResult
+    | RunAll -> FrontEnd.EntryPoints.runFile inputPath |> printFrontEndResult
+
+[<EntryPoint>]
+let main args =
+    match ArgParse.parseArgs args with
+    | ArgParseSuccess (runMode, inputPath) ->
+        run runMode inputPath
+        0
+    | ArgParseFailure errorMsg ->
+        printfn "%s" errorMsg
+        -1
+    | ImmediateExit -> 0

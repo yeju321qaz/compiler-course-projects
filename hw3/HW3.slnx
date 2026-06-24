@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ECC.Core/ECC.Core.fsproj" />
+    <Project Path="src/ECC.Driver/ECC.Driver.fsproj" />
+    <Project Path="src/ECC.FrontEnd/ECC.FrontEnd.fsproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ECC.FrontEnd.Tests/ECC.FrontEnd.Tests.fsproj" />
+  </Folder>
+</Solution>

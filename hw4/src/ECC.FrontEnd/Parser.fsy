@@ -1,0 +1,300 @@
+%{
+(*
+  ECC - Ewha C-- Compiler
+
+  Copyright (c) SWEETS Lab. @ Ewha Womans University, since 2026
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of
+  this software and associated documentation files (the "Software"), to deal in
+  the Software without restriction, including without limitation the rights to
+  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+  of the Software, and to permit persons to whom the Software is furnished to do
+  so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+*)
+
+// Current best solution written by kimnnnn4215g.
+// Hall of Fame:
+// - kimnnnn4215g
+
+open ECC.Core
+open ECC.FrontEnd
+open FSharp.Text.Parsing
+open FSharp.Text.Lexing
+
+// Called by FsLexYacc when a syntax error is detected.
+let parse_error (_: string) = raise ParseError
+
+// Build a Location at the start position of the n-th input symbol (1-based).
+// `parseState` is automatically in scope inside every semantic action.
+let mkLoc (parseState: IParseState) (n: int) (v: 'a) : Location<'a> =
+    let p = parseState.InputStartPosition(n)
+    { Value = v; Line = p.Line; Column = p.Column }
+
+let private processEscapes (s: string) : string =
+    let sb = System.Text.StringBuilder()
+    let mutable i = 0
+    while i < s.Length do
+        if s.[i] = '\\' && i + 1 < s.Length then
+            let nxt = s.[i+1]
+            match nxt with
+            | 'n'  -> sb.Append('\n')   |> ignore
+            | 't'  -> sb.Append('\t')   |> ignore
+            | '0'  -> sb.Append('\000') |> ignore
+            | '\'' -> sb.Append('\'')   |> ignore
+            | '"'  -> sb.Append('"')    |> ignore
+            | _    -> sb.Append(nxt)    |> ignore
+            i <- i + 2
+        else
+            sb.Append(s.[i]) |> ignore
+            i <- i + 1
+    sb.ToString()
+
+let charLitToChar (s: string) : char =
+    (processEscapes (s.Substring(1, s.Length - 2))).[0]
+
+let strLitToString (s: string) : string =
+    processEscapes (s.Substring(1, s.Length - 2))
+    
+let mkLitLoc (parseState: IParseState) (lexeme: string) (v: 'a) : Location<'a> =
+    let p = parseState.InputStartPosition(1)
+    { Value = v
+      Line = p.Line
+      Column = p.Column - (lexeme.Length - 1) }
+%}
+
+%token <string> ID
+%token <int>    INTLIT
+%token <string> CHARLIT
+%token <string> STRINGLIT
+
+%token INT CHAR VOID
+%token IF ELSE WHILE FOR RETURN
+
+%token PLUS MINUS STAR SLASH
+%token EQ NEQ LT LEQ GT GEQ
+%token AND OR NOT
+%token ASSIGN
+
+%token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET
+%token SEMICOLON COMMA
+%token EOF
+
+%nonassoc LOWER_THAN_ELSE
+%nonassoc ELSE
+
+%left OR
+%left AND
+%left EQ NEQ
+%left LT LEQ GT GEQ
+%left PLUS MINUS
+%left STAR SLASH
+%right UMINUS NOT
+
+%start start
+%type <CmmProgram> start
+
+%%
+
+start:
+    | program EOF                              { $1 }
+
+program:
+    | /* empty */                              { [] }
+    | var_decl program
+        { (mkLoc parseState 1 (CmmDeclVar $1)) :: $2 }
+    | func_decl program
+        { (mkLoc parseState 1 (CmmDeclFunc $1)) :: $2 }
+
+
+
+non_void_type:
+    | INT                                      { mkLoc parseState 1 CmmTyInt }
+    | CHAR                                     { mkLoc parseState 1 CmmTyChar }
+
+var_decl_list:
+    | /* empty */                              { [] }
+    | var_decl var_decl_list                   { $1 :: $2 }
+
+var_decl:
+    | non_void_type var_name_list SEMICOLON
+        { mkLoc parseState 1 { Type = $1; Names = $2 } }
+
+var_name_list:
+    | var_name                                 { [$1] }
+    | var_name COMMA var_name_list             { $1 :: $3 }
+
+var_name:
+    | ID
+        { mkLoc parseState 1 (CmmVarScalar $1) }
+    | ID LBRACKET INTLIT RBRACKET
+        { mkLoc parseState 1 (CmmVarArray ($1, $3)) }
+
+func_decl:
+    | non_void_type ID LPAREN param_decl_list RPAREN block_stmt
+        { mkLoc parseState 1
+            { RetType = $1; Name = $2; Params = $4; Body = $6 } }
+    | VOID ID LPAREN param_decl_list RPAREN block_stmt
+        { let ty = mkLoc parseState 1 CmmTyVoid
+          mkLoc parseState 1
+            { RetType = ty; Name = $2; Params = $4; Body = $6 } }
+
+param_decl_list:
+    | VOID                                     { [] }
+    | param_decl                               { [$1] }
+    | param_decl COMMA param_decl_list         { $1 :: $3 }
+
+param_decl:
+    | non_void_type ID
+        { mkLoc parseState 1 (CmmParamScalar ($1, $2)) }
+    | non_void_type ID LBRACKET INTLIT RBRACKET
+        { mkLoc parseState 1 (CmmParamArray ($1, $2, $4)) }
+    | VOID ID
+        { let ty = mkLoc parseState 1 CmmTyVoid
+          mkLoc parseState 1 (CmmParamScalar (ty, $2)) }
+    | VOID ID LBRACKET INTLIT RBRACKET
+        { let ty = mkLoc parseState 1 CmmTyVoid
+          mkLoc parseState 1 (CmmParamArray (ty, $2, $4)) }
+
+block_stmt:
+    | LBRACE var_decl_list stmt_list RBRACE
+        { mkLoc parseState 1 { Decls = $2; Stmts = $3 } }
+
+stmt_list:
+    | /* empty */                              { [] }
+    | stmt stmt_list                           { $1 :: $2 }
+
+stmt:
+    | if_stmt                                  { $1 }
+    | while_stmt                               { $1 }
+    | for_stmt                                 { $1 }
+    | return_stmt                              { $1 }
+    | assign_stmt                              { $1 }
+    | call_stmt                                { $1 }
+    | block_stmt
+        { mkLoc parseState 1 (CmmStmtBlock $1) }
+    | empty_stmt                               { $1 }
+
+if_stmt:
+    | IF LPAREN expr RPAREN stmt %prec LOWER_THAN_ELSE
+        { mkLoc parseState 1 (CmmStmtIf ($3, $5, None)) }
+    | IF LPAREN expr RPAREN stmt ELSE stmt
+        { mkLoc parseState 1 (CmmStmtIf ($3, $5, Some $7)) }
+
+while_stmt:
+    | WHILE LPAREN expr RPAREN stmt
+        { mkLoc parseState 1 (CmmStmtWhile ($3, $5)) }
+
+for_stmt:
+    | FOR LPAREN for_init SEMICOLON for_cond SEMICOLON for_update RPAREN stmt
+        { mkLoc parseState 1 (CmmStmtFor ($3, $5, $7, $9)) }
+
+for_init:
+    | /* empty */                              { None }
+    | assign                                   { Some $1 }
+
+for_cond:
+    | /* empty */                              { None }
+    | expr                                     { Some $1 }
+
+for_update:
+    | /* empty */                              { None }
+    | assign                                   { Some $1 }
+
+return_stmt:
+    | RETURN SEMICOLON
+        { mkLoc parseState 1 (CmmStmtReturn None) }
+    | RETURN expr SEMICOLON
+        { mkLoc parseState 1 (CmmStmtReturn (Some $2)) }
+
+assign_stmt:
+    | assign SEMICOLON
+        { mkLoc parseState 1 (CmmStmtAssign $1) }
+
+assign:
+    | ID ASSIGN expr
+        { mkLoc parseState 1 (CmmAssignVar ($1, $3)) }
+    | ID LBRACKET expr RBRACKET ASSIGN expr
+        { mkLoc parseState 1 (CmmAssignArr ($1, $3, $6)) }
+
+call_stmt:
+    | ID LPAREN expr_list RPAREN SEMICOLON
+        { mkLoc parseState 1 (CmmStmtCall ($1, $3)) }
+
+empty_stmt:
+    | SEMICOLON
+        { mkLoc parseState 1 CmmStmtEmpty }
+
+expr:
+    | INTLIT
+        { mkLoc parseState 1 (CmmExpIntLit $1) }
+    | CHARLIT
+        { mkLitLoc parseState $1 (CmmExpCharLit (charLitToChar $1)) }
+    | STRINGLIT
+        { mkLitLoc parseState $1 (CmmExpStrLit (strLitToString $1)) }
+
+    | ID
+        { mkLoc parseState 1 (CmmExpVar $1) }
+    | ID LBRACKET expr RBRACKET
+        { mkLoc parseState 1 (CmmExpArrAccess ($1, $3)) }
+    | ID LPAREN expr_list RPAREN
+        { mkLoc parseState 1 (CmmExpCall ($1, $3)) }
+    | LPAREN expr RPAREN
+        { $2 }
+    | MINUS expr %prec UMINUS
+        { let op = mkLoc parseState 1 CmmUNeg
+          mkLoc parseState 1 (CmmExpUnOp (op, $2)) }
+    | NOT expr
+        { let op = mkLoc parseState 1 CmmUNot
+          mkLoc parseState 1 (CmmExpUnOp (op, $2)) }
+    | expr PLUS expr
+        { let op = mkLoc parseState 2 CmmBAdd
+          mkLoc parseState 1 (CmmExpBinOp (op, $1, $3)) }
+    | expr MINUS expr
+        { let op = mkLoc parseState 2 CmmBSub
+          mkLoc parseState 1 (CmmExpBinOp (op, $1, $3)) }
+    | expr STAR expr
+        { let op = mkLoc parseState 2 CmmBMul
+          mkLoc parseState 1 (CmmExpBinOp (op, $1, $3)) }
+    | expr SLASH expr
+        { let op = mkLoc parseState 2 CmmBDiv
+          mkLoc parseState 1 (CmmExpBinOp (op, $1, $3)) }
+    | expr AND expr
+        { let op = mkLoc parseState 2 CmmBAnd
+          mkLoc parseState 1 (CmmExpBinOp (op, $1, $3)) }
+    | expr OR expr
+        { let op = mkLoc parseState 2 CmmBOr
+          mkLoc parseState 1 (CmmExpBinOp (op, $1, $3)) }
+    | expr EQ expr
+        { let op = mkLoc parseState 2 CmmREq
+          mkLoc parseState 1 (CmmExpRelOp (op, $1, $3)) }
+    | expr NEQ expr
+        { let op = mkLoc parseState 2 CmmRNeq
+          mkLoc parseState 1 (CmmExpRelOp (op, $1, $3)) }
+    | expr LT expr
+        { let op = mkLoc parseState 2 CmmRLt
+          mkLoc parseState 1 (CmmExpRelOp (op, $1, $3)) }
+    | expr LEQ expr
+        { let op = mkLoc parseState 2 CmmRLeq
+          mkLoc parseState 1 (CmmExpRelOp (op, $1, $3)) }
+    | expr GT expr
+        { let op = mkLoc parseState 2 CmmRGt
+          mkLoc parseState 1 (CmmExpRelOp (op, $1, $3)) }
+    | expr GEQ expr
+        { let op = mkLoc parseState 2 CmmRGeq
+          mkLoc parseState 1 (CmmExpRelOp (op, $1, $3)) }
+
+expr_list:
+    | /* empty */                              { [] }
+    | expr                                     { [$1] }
+    | expr COMMA expr_list                     { $1 :: $3 }

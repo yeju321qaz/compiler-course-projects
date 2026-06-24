@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Launcher/Launcher.fsproj" />
+    <Project Path="src/Prob01/Prob01.fsproj" />
+    <Project Path="src/Prob02/Prob02.fsproj" />
+    <Project Path="src/Prob03/Prob03.fsproj" />
+    <Project Path="src/Prob04/Prob04.fsproj" />
+    <Project Path="src/Prob05/Prob05.fsproj" />
+    <Project Path="src/Prob06/Prob06.fsproj" />
+    <Project Path="src/Prob07/Prob07.fsproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Prob01.Tests/Prob01.Tests.fsproj" />
+    <Project Path="tests/Prob02.Tests/Prob02.Tests.fsproj" />
+    <Project Path="tests/Prob03.Tests/Prob03.Tests.fsproj" />
+    <Project Path="tests/Prob04.Tests/Prob04.Tests.fsproj" />
+    <Project Path="tests/Prob05.Tests/Prob05.Tests.fsproj" />
+    <Project Path="tests/Prob06.Tests/Prob06.Tests.fsproj" />
+    <Project Path="tests/Prob07.Tests/Prob07.Tests.fsproj" />
+  </Folder>
+</Solution>

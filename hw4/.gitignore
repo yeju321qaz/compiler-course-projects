@@ -1,0 +1,8 @@
+bin/
+obj/
+TestResults/
+.vs/
+Lexer.fsi
+Lexer.fs
+Parser.fsi
+Parser.fs

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ECC.Core/ECC.Core.fsproj" />
+    <Project Path="src/ECC.Driver/ECC.Driver.fsproj" />
+    <Project Path="src/ECC.FrontEnd/ECC.FrontEnd.fsproj" />
+    <Project Path="src/ECC.IR/ECC.IR.fsproj" Id="f84ba4f3-af5e-48c8-bc78-0b675ae5a39d" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ECC.FrontEnd.Tests/ECC.FrontEnd.Tests.fsproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,209 @@
+{
+(*
+  ECC - Ewha C-- Compiler
+
+  Copyright (c) SWEETS Lab. @ Ewha Womans University, since 2026
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of
+  this software and associated documentation files (the "Software"), to deal in
+  the Software without restriction, including without limitation the rights to
+  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+  of the Software, and to permit persons to whom the Software is furnished to do
+  so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+*)
+
+// Current best solution written by y3onk.
+// Hall of Fame:
+// - y3onk
+
+module ECC.FrontEnd.Lexer
+
+open FSharp.Text.Lexing
+open ECC.Core
+
+/// Helper functions
+let lexeme (lexbuf: LexBuffer<_>) =
+    LexBuffer<_>.LexemeString lexbuf
+
+let handleNewLine (lexbuf: LexBuffer<_>) =
+    lexbuf.EndPos <- lexbuf.EndPos.NextLine
+
+let genToken token line col =
+    //Ok (Location<Token>.Create token line col)
+    token // smk: Fix for HW3
+
+let reportError line col =
+    //Error (line, col)
+    raise (LexError (line, col)) // smk: Fix for HW3
+
+let currentPos (lexbuf: LexBuffer<_>) =
+    let pos = lexbuf.StartPos
+    pos.pos_lnum, pos.pos_cnum - pos.pos_bol
+
+let genTokenHere token (lexbuf: LexBuffer<_>) =
+    let line, col = currentPos lexbuf
+    genToken token line col
+
+let reportErrorHere (lexbuf: LexBuffer<_>) =
+    let line, col = currentPos lexbuf
+    reportError line col
+
+let reportErrorOffset offset (lexbuf: LexBuffer<_>) =
+    let line, col = currentPos lexbuf
+    reportError line (col + offset)
+
+let genTokenAt token line col =
+    genToken token line col
+
+let literalBuilder = System.Text.StringBuilder ()
+let mutable literalStartLine = 0
+let mutable literalStartCol = 0
+
+let startLiteral line col (prefix: string) =
+    literalStartLine <- line
+    literalStartCol <- col
+    literalBuilder.Clear () |> ignore
+    literalBuilder.Append prefix |> ignore
+
+let appendLiteral (text: string) =
+    literalBuilder.Append text |> ignore
+
+let genCharLiteral () =
+    genTokenAt (TokCharLit (literalBuilder.ToString ())) literalStartLine literalStartCol
+
+let genStringLiteral () =
+    genTokenAt (TokStringLit (literalBuilder.ToString ())) literalStartLine literalStartCol
+}
+
+/// TODO: This is what you should implement.
+let letter = ['A'-'Z' 'a'-'z']
+let digit = ['0'-'9']
+let nonzero = ['1'-'9']
+let idrest = ['A'-'Z' 'a'-'z' '0'-'9' '_']
+let identifier = letter idrest*
+let integer = '0' | nonzero digit*
+let leadingZeroInteger = '0' digit+
+let whitespace = [' ' '\t' '\012']+
+let charPlain = [' '-'&' '('-'[' ']'-'~']
+let stringPlain = [' '-'!' '#'-'[' ']'-'~']
+
+rule tokenize = parse
+    | whitespace { tokenize lexbuf }
+    | "\r\n" { handleNewLine lexbuf; tokenize lexbuf }
+    | '\n' { handleNewLine lexbuf; tokenize lexbuf }
+    | '\r' { handleNewLine lexbuf; tokenize lexbuf }
+    | "//" { lineComment lexbuf }
+    | "/*" { blockComment lexbuf }
+    | "==" { genTokenHere TokEq lexbuf }
+    | "!=" { genTokenHere TokNeq lexbuf }
+    | "<=" { genTokenHere TokLeq lexbuf }
+    | ">=" { genTokenHere TokGeq lexbuf }
+    | "&&" { genTokenHere TokAnd lexbuf }
+    | "||" { genTokenHere TokOr lexbuf }
+    | "+" { genTokenHere TokPlus lexbuf }
+    | "-" { genTokenHere TokMinus lexbuf }
+    | "*" { genTokenHere TokStar lexbuf }
+    | "/" { genTokenHere TokSlash lexbuf }
+    | "<" { genTokenHere TokLt lexbuf }
+    | ">" { genTokenHere TokGt lexbuf }
+    | "!" { genTokenHere TokNot lexbuf }
+    | "=" { genTokenHere TokAssign lexbuf }
+    | "(" { genTokenHere TokLParen lexbuf }
+    | ")" { genTokenHere TokRParen lexbuf }
+    | "{" { genTokenHere TokLBrace lexbuf }
+    | "}" { genTokenHere TokRBrace lexbuf }
+    | "[" { genTokenHere TokLBracket lexbuf }
+    | "]" { genTokenHere TokRBracket lexbuf }
+    | ";" { genTokenHere TokSemicolon lexbuf }
+    | "," { genTokenHere TokComma lexbuf }
+    | "int" { genTokenHere TokInt lexbuf }
+    | "char" { genTokenHere TokChar lexbuf }
+    | "void" { genTokenHere TokVoid lexbuf }
+    | "if" { genTokenHere TokIf lexbuf }
+    | "else" { genTokenHere TokElse lexbuf }
+    | "while" { genTokenHere TokWhile lexbuf }
+    | "for" { genTokenHere TokFor lexbuf }
+    | "return" { genTokenHere TokReturn lexbuf }
+    | identifier { genTokenHere (TokID (lexeme lexbuf)) lexbuf }
+    | leadingZeroInteger { reportErrorOffset 1 lexbuf }
+    | integer { genTokenHere (TokIntLit (lexeme lexbuf)) lexbuf }
+    | "'" {
+        let line, col = currentPos lexbuf
+        startLiteral line col (lexeme lexbuf)
+        charLiteral lexbuf
+      }
+    | "\"" {
+        let line, col = currentPos lexbuf
+        startLiteral line col (lexeme lexbuf)
+        stringLiteral lexbuf
+      }
+    | eof { genTokenHere TokEOF lexbuf }
+    | _ { reportErrorHere lexbuf }
+
+and lineComment = parse
+    | "\r\n" { handleNewLine lexbuf; tokenize lexbuf }
+    | '\n' { handleNewLine lexbuf; tokenize lexbuf }
+    | '\r' { handleNewLine lexbuf; tokenize lexbuf }
+    | eof { genTokenHere TokEOF lexbuf }
+    | _ { lineComment lexbuf }
+
+and blockComment = parse
+    | "*/" { tokenize lexbuf }
+    | "\r\n" { handleNewLine lexbuf; blockComment lexbuf }
+    | '\n' { handleNewLine lexbuf; blockComment lexbuf }
+    | '\r' { handleNewLine lexbuf; blockComment lexbuf }
+    | eof { reportErrorHere lexbuf }
+    | _ { blockComment lexbuf }
+
+and charLiteral = parse
+    | charPlain {
+        appendLiteral (lexeme lexbuf)
+        charLiteralEnd lexbuf
+      }
+    | "\\n" | "\\0" | "\\t" | "\\'" {
+        appendLiteral (lexeme lexbuf)
+        charLiteralEnd lexbuf
+      }
+    | "\r\n" { reportErrorHere lexbuf }
+    | '\n' { reportErrorHere lexbuf }
+    | '\r' { reportErrorHere lexbuf }
+    | eof { reportErrorHere lexbuf }
+    | _ { reportErrorHere lexbuf }
+
+and charLiteralEnd = parse
+    | "'" {
+        appendLiteral (lexeme lexbuf)
+        genCharLiteral ()
+      }
+    | eof { reportErrorHere lexbuf }
+    | _ { reportErrorHere lexbuf }
+
+and stringLiteral = parse
+    | "\"" {
+        appendLiteral (lexeme lexbuf)
+        genStringLiteral ()
+      }
+    | stringPlain+ {
+        appendLiteral (lexeme lexbuf)
+        stringLiteral lexbuf
+      }
+    | "\\n" | "\\0" | "\\t" | "\\\"" {
+        appendLiteral (lexeme lexbuf)
+        stringLiteral lexbuf
+      }
+    | "\r\n" { reportErrorHere lexbuf }
+    | '\n' { reportErrorHere lexbuf }
+    | '\r' { reportErrorHere lexbuf }
+    | eof { reportErrorHere lexbuf }
+    | _ { reportErrorHere lexbuf }
